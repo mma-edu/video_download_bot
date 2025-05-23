@@ -1,30 +1,32 @@
 #!/usr/bin/env python3
 # universal_downloader_bot.py
+
 import asyncio
 import logging
 import os
 import shutil
 import tempfile
 import uuid
-from functools import partial
 from pathlib import Path
 
-from telegram import (InlineKeyboardButton, InlineKeyboardMarkup, Update,
-                      constants)
-from telegram.ext import (ApplicationBuilder, CallbackQueryHandler,
-                          CommandHandler, ContextTypes, MessageHandler, filters)
-
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, constants
+from telegram.ext import (
+    ApplicationBuilder,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 from yt_dlp import YoutubeDL
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-TELEGRAM_FILE_LIMIT = 2 * 1024 * 1024 * 1024  # 2 GB for normal bots
+BOT_TOKEN = os.getenv("BOT_TOKEN")  # Use environment variable securely
+TELEGRAM_FILE_LIMIT = 2 * 1024 * 1024 * 1024  # 2 GB for Telegram bots
+COOKIES_FILE = "cookies.txt"
 
-# --------------------------------------------------------------------------- #
-# Globals – keep a short-lived mapping {token: original_url}
-# --------------------------------------------------------------------------- #
 LINK_STORE: dict[str, str] = {}
 
-# Configure logging
+# Logging setup
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
     level=logging.INFO,
@@ -32,42 +34,36 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# --------------------------------------------------------------------------- #
-# Helper: run yt-dlp in a thread                                               #
-# --------------------------------------------------------------------------- #
 def get_formats(url: str):
-    """Return yt-dlp extraction result (without downloading)."""
-    ydl_opts = {"quiet": True, "skip_download": True}
+    """Extract video formats using yt-dlp with cookies."""
+    ydl_opts = {
+        "quiet": True,
+        "skip_download": True,
+        "cookiefile": COOKIES_FILE,
+    }
     with YoutubeDL(ydl_opts) as ydl:
         return ydl.extract_info(url, download=False)
 
 
 def download_format(url: str, fmt: str, out_path: Path):
-    """
-    Download `fmt` (+ bestaudio) of `url` into out_path (path *without* ext).
-    Returns the final file path.
-    """
+    """Download video in selected format using yt-dlp with cookies."""
     out_tpl = str(out_path) + ".%(ext)s"
     ydl_opts = {
         "quiet": True,
         "outtmpl": out_tpl,
-        # merge bestaudio automatically if video-only stream
         "format": f"{fmt}+bestaudio/best",
         "merge_output_format": "mp4",
+        "cookiefile": COOKIES_FILE,
     }
     with YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
 
-    # find the resulting file (mp4/webm/…)
     for p in out_path.parent.iterdir():
         if p.stem == out_path.name:
             return p
     raise FileNotFoundError("Download succeeded but file not found!")
 
 
-# --------------------------------------------------------------------------- #
-# Bot command handlers                                                        #
-# --------------------------------------------------------------------------- #
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 *Universal Video Downloader*\n"
@@ -78,7 +74,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Triggered whenever a plain text message arrives."""
     message = update.effective_message
     url = message.text.strip()
 
@@ -97,18 +92,17 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video_title = info.get("title") or "video"
     formats = info.get("formats") or []
 
-    # Select *progressive* or *video-only* formats that have a resolution label
     buttons = []
     seen_labels = set()
     for f in sorted(formats, key=lambda x: (x.get("height") or 0), reverse=True):
         if f.get("vcodec") == "none":
-            continue  # skip audio-only
+            continue
         height = f.get("height") or 0
         if height == 0:
             continue
         label = f"{height}p"
         if label in seen_labels:
-            continue  # avoid duplicate rows (same height w/ different bitrates)
+            continue
         seen_labels.add(label)
 
         fmt_id = f["format_id"]
@@ -130,13 +124,12 @@ async def link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Triggered when the user taps a resolution button."""
     query = update.callback_query
-    await query.answer()  # acknowledge immediately
+    await query.answer()
 
     try:
         token, fmt_id = query.data.split(":")
-        url = LINK_STORE.pop(token)  # remove to keep dict tiny
+        url = LINK_STORE.pop(token)
     except Exception:
         await query.edit_message_text("⚠️ This button is no longer valid. Send the link again.")
         return
@@ -153,12 +146,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"❌ Download error:\n`{e}`", parse_mode="Markdown")
         return
 
-    # Telegram size check
     if file_path.stat().st_size > TELEGRAM_FILE_LIMIT:
         shutil.rmtree(temp_dir, ignore_errors=True)
         await query.edit_message_text(
-            "⚠️ This file is larger than Telegram's 2 GB limit. "
-            "Try a lower resolution."
+            "⚠️ This file is larger than Telegram's 2 GB limit. Try a lower resolution."
         )
         return
 
@@ -170,15 +161,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.delete_message()
 
 
-# --------------------------------------------------------------------------- #
-# Main entry-point                                                            #
-# --------------------------------------------------------------------------- #
 def main():
-    if BOT_TOKEN.startswith("PASTE_"):
-        raise SystemExit("❌  Set your BOT_TOKEN first!")
+    if not BOT_TOKEN:
+        raise SystemExit("❌ BOT_TOKEN is not set!")
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, link_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
