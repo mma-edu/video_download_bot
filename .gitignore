@@ -1,0 +1,55 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+coverage.xml
+*.cover
+.cache
+nosetests.xml
+test-results/
+
+# Logs and local environment
+*.log
+.env
+.env.*
+
+# Cookie/session/auth files
+cookies.txt
+
+# VSCode settings
+.vscode/
+
+# macOS
+.DS_Store
+
+# Linux
+*~
+
+# Render deployment build folders (if any)
+build/
+dist/
