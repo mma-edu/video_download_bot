@@ -16,7 +16,7 @@ from telegram.ext import (ApplicationBuilder, CallbackQueryHandler,
 
 from yt_dlp import YoutubeDL
 
-BOT_TOKEN = os.getenv("7565075245:AAGEUBvLnx6WO-cTZNeNUf9mBJNoY9Fe49c") or "7565075245:AAGEUBvLnx6WO-cTZNeNUf9mBJNoY9Fe49c"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_FILE_LIMIT = 2 * 1024 * 1024 * 1024  # 2 GB for normal bots
 
 # --------------------------------------------------------------------------- #
